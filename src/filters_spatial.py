@@ -59,13 +59,14 @@ def apply_gaussian_blur(img, size=5, sigma=1.0, padding="zero"):
 
 
 def apply_laplace(img, padding="zero"):
-    """Aplica Laplace e normaliza a resposta para visualizacao.
+    """Aplica Laplace e usa valor absoluto para visualizacao didatica.
 
-    A resposta crua pode ter valores negativos e positivos. Para salvar ou
-    mostrar como imagem, espalhamos esses valores para [0, 255].
+    A resposta crua tem valores negativos e positivos. Para o relatorio, o
+    valor absoluto deixa as bordas claras em fundo escuro, que e mais facil de
+    interpretar que a resposta assinada em cinza medio.
     """
     response = _laplace_response(img, padding)
-    return to_uint8(response, normalize=True)
+    return to_uint8(np.abs(response), normalize=True)
 
 
 def apply_sobel(img, padding="zero"):

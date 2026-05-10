@@ -8,27 +8,84 @@ convolucionais.
 from pathlib import Path
 import shutil
 
-from src.filters_spatial import apply_box_blur, apply_shift, apply_sobel
-from src.image_utils import read_gray, save_comparison_figure
+import numpy as np
+
+from src.convolution import convolve2d
+from src.filters_spatial import (
+    apply_box_blur,
+    apply_emboss,
+    apply_gaussian_blur,
+    apply_laplace,
+    apply_shift,
+    apply_sobel,
+    sharpen_with_laplace,
+    unsharp_mask,
+)
+from src.frequency_analysis import (
+    combined_kernel_frequency_response,
+    save_frequency_analysis_figure,
+    save_frequency_analysis_figure_from_response,
+)
+from src.image_utils import read_gray, save_comparison_figure, save_image, to_uint8
+from src.kernels import (
+    box_kernel,
+    emboss_kernel,
+    gaussian_kernel,
+    identity_kernel,
+    laplace_kernel,
+    shift_kernel,
+    sobel_i_kernel,
+    sobel_j_kernel,
+)
 
 
 PADDING_MODES = ["none", "zero", "edge", "reflect", "wrap"]
+DEFAULT_PADDING = "reflect"
 
 
-def _run_filter_for_all_paddings(img, filter_function):
-    """Aplica o mesmo filtro em todos os modos de padding planejados."""
-    results = []
+def _reset_output_dir(output_dir):
+    """Remove resultados antigos para evitar misturar imagens de execucoes anteriores."""
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    for padding in PADDING_MODES:
-        results.append(filter_function(img, padding))
+    for path in output_dir.iterdir():
+        if path.name == ".gitkeep":
+            continue
 
-    return results
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
 
 
-def _save_padding_comparison(output_path, original, results, filter_name):
-    """Salva uma figura com original + resultados lado a lado."""
-    images = [original] + results
-    titles = ["original"] + PADDING_MODES
+def _save_filter_comparison(output_path, original, result, filter_name, params):
+    """Salva original e resultado filtrado em uma figura comparativa."""
+    save_comparison_figure(
+        output_path,
+        [original, result],
+        titles=["original", params],
+        cols=2,
+        figsize=(8, 4),
+        main_title=filter_name,
+    )
+
+
+def _top_left_crop(img, size):
+    """Recorta o canto superior esquerdo para destacar artefatos de borda."""
+    img = np.asarray(img)
+    size = min(int(size), img.shape[0], img.shape[1])
+    return img[:size, :size]
+
+
+def _save_padding_figure(output_path, original, results, filter_name, params, crop_size=None):
+    """Salva uma comparacao dos modos de padding para um filtro."""
+    images = [original] + [results[padding] for padding in PADDING_MODES]
+    titles = ["original"] + [f"padding={padding}" for padding in PADDING_MODES]
+
+    if crop_size is None:
+        main_title = f"Padding - {filter_name}\n{params}"
+    else:
+        images = [_top_left_crop(image, crop_size) for image in images]
+        main_title = f"Padding - {filter_name} - crop do canto superior esquerdo\n{params}"
 
     save_comparison_figure(
         output_path,
@@ -36,52 +93,613 @@ def _save_padding_comparison(output_path, original, results, filter_name):
         titles=titles,
         cols=len(images),
         figsize=(18, 4),
-        main_title=f"Padding - {filter_name}",
+        main_title=main_title,
+        dpi=240,
+        interpolation="nearest",
     )
 
 
 def run_padding_experiment():
-    """Gera figuras comparando paddings para filtros da Parte I.
+    """Gera figuras comparando paddings da Parte I.
 
     A imagem escolhida foi `pessoa-lado-bruxa-salem.jpg`, porque tem fundo
     claro, arvores finas e objetos encostando em regioes proximas das bordas.
     Isso torna os artefatos de padding mais faceis de perceber.
     """
     image_path = Path("imgs") / "pessoa-lado-bruxa-salem.jpg"
-    output_dir = Path("outputs") / "parte1" / "padding"
-    legacy_output_dir = Path("outputs") / "parte1_padding"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    legacy_output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = Path("outputs") / "parte1_padding"
+    _reset_output_dir(output_dir)
+    full_dir = output_dir / "full"
+    crops_dir = output_dir / "crops"
+    full_dir.mkdir(parents=True, exist_ok=True)
+    crops_dir.mkdir(parents=True, exist_ok=True)
 
     # As imagens de entrada ja foram preparadas em formato quadrado, entao
     # usamos a imagem inteira para preservar a composicao escolhida.
     img = read_gray(image_path)
+    crop_size = 220
 
     experiments = [
-        (
-            "media_9x9",
-            "media 9x9",
-            lambda image, padding: apply_box_blur(image, size=9, padding=padding),
-        ),
-        (
-            "sobel",
-            "Sobel",
-            lambda image, padding: apply_sobel(image, padding=padding),
-        ),
-        (
-            "shift_di5_dj5",
-            "shift di=5 dj=5",
-            lambda image, padding: apply_shift(image, size=11, di=5, dj=5, padding=padding),
-        ),
+        {
+            "filename": "01_shift.png",
+            "filter_name": "Shift",
+            "params": "kernel 31x31, di=15, dj=15",
+            "apply": lambda image, padding: apply_shift(
+                image,
+                size=31,
+                di=15,
+                dj=15,
+                padding=padding,
+            ),
+        },
+        {
+            "filename": "02_media_caixa.png",
+            "filter_name": "Caixa/Media",
+            "params": "kernel 15x15",
+            "apply": lambda image, padding: apply_box_blur(
+                image,
+                size=15,
+                padding=padding,
+            ),
+        },
+        {
+            "filename": "03_gaussiano.png",
+            "filter_name": "Gaussiano",
+            "params": "kernel 15x15, sigma=3.0",
+            "apply": lambda image, padding: apply_gaussian_blur(
+                image,
+                size=15,
+                sigma=3.0,
+                padding=padding,
+            ),
+        },
+        {
+            "filename": "04_laplace.png",
+            "filter_name": "Laplace",
+            "params": "kernel 3x3 centro=-8",
+            "apply": lambda image, padding: apply_laplace(image, padding=padding),
+        },
+        {
+            "filename": "05_sobel.png",
+            "filter_name": "Sobel magnitude",
+            "params": "magnitude sqrt(Gi^2 + Gj^2)",
+            "apply": lambda image, padding: apply_sobel(image, padding=padding),
+        },
+        {
+            "filename": "06_unsharp_mask.png",
+            "filter_name": "Unsharp Mask",
+            "params": "gaussiano 9x9, sigma=2.0, amount=1.3",
+            "apply": lambda image, padding: unsharp_mask(
+                image,
+                size=9,
+                sigma=2.0,
+                amount=1.3,
+                padding=padding,
+            ),
+        },
     ]
 
     saved_paths = []
 
-    for filename, filter_name, filter_function in experiments:
-        results = _run_filter_for_all_paddings(img, filter_function)
-        output_path = output_dir / f"padding_{filename}.png"
-        _save_padding_comparison(output_path, img, results, filter_name)
-        shutil.copy2(output_path, legacy_output_dir / output_path.name)
-        saved_paths.append(output_path)
+    for experiment in experiments:
+        results = {}
+
+        for padding in PADDING_MODES:
+            results[padding] = experiment["apply"](img, padding)
+
+        full_path = full_dir / experiment["filename"]
+        crop_path = crops_dir / experiment["filename"]
+
+        _save_padding_figure(
+            full_path,
+            img,
+            results,
+            experiment["filter_name"],
+            experiment["params"],
+        )
+        _save_padding_figure(
+            crop_path,
+            img,
+            results,
+            experiment["filter_name"],
+            experiment["params"],
+            crop_size=crop_size,
+        )
+
+        saved_paths.extend([full_path, crop_path])
+        print(f"{experiment['filter_name']}: {full_path} e {crop_path}")
 
     return saved_paths
+
+
+def run_filter_experiments():
+    """Gera as figuras principais dos filtros/processos da Parte I."""
+    output_dir = Path("outputs") / "parte1_filtros"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    experiments = [
+        {
+            "filename": "01_shift.png",
+            "filter_name": "Shift",
+            "image": "pessoa-lado-bruxa-salem.jpg",
+            "reason": "tem bordas, arvores e fundo claro, o que facilita perceber o deslocamento.",
+            "params": "size=31, di=15, dj=15, padding=zero",
+            "apply": lambda image: apply_shift(
+                image,
+                size=31,
+                di=15,
+                dj=15,
+                padding="zero",
+            ),
+        },
+        {
+            "filename": "02_media_caixa.png",
+            "filter_name": "Caixa/Media",
+            "image": "pessoa-consulado-segurando-papel.jpg",
+            "reason": "tem texto, bandeiras, tijolos e contornos bons para comparar perda de detalhe.",
+            "params": "size=9, padding=reflect",
+            "apply": lambda image: apply_box_blur(
+                image,
+                size=9,
+                padding=DEFAULT_PADDING,
+            ),
+        },
+        {
+            "filename": "03_gaussiano.png",
+            "filter_name": "Gaussiano",
+            "image": "pessoa-consulado-segurando-papel.jpg",
+            "reason": "permite comparar suavizacao mantendo texto e contornos reconheciveis.",
+            "params": "size=7, sigma=1.5, padding=reflect",
+            "apply": lambda image: apply_gaussian_blur(
+                image,
+                size=7,
+                sigma=1.5,
+                padding=DEFAULT_PADDING,
+            ),
+        },
+        {
+            "filename": "04_laplace.png",
+            "filter_name": "Laplace",
+            "image": "pessoas-estadio-futebol.jpg",
+            "reason": "tem arquibancadas, linhas, rostos e muitas transicoes de intensidade.",
+            "params": "abs(kernel 3x3 centro=-8), padding=reflect",
+            "apply": lambda image: apply_laplace(image, padding=DEFAULT_PADDING),
+        },
+        {
+            "filename": "05_sobel.png",
+            "filter_name": "Sobel",
+            "image": "pessoas-estadio-futebol.jpg",
+            "reason": "tem muitas bordas direcionais nas arquibancadas, grades, campo e pessoas.",
+            "params": "magnitude sqrt(Gi^2 + Gj^2), padding=reflect",
+            "apply": lambda image: apply_sobel(image, padding=DEFAULT_PADDING),
+        },
+        {
+            "filename": "06_nitidez_laplace.png",
+            "filter_name": "Aumento de Nitidez com Laplace",
+            "image": "pessoa-consulado-segurando-papel.jpg",
+            "reason": "texto, tijolos e bandeiras deixam o ganho de nitidez bem visivel.",
+            "params": "alpha=0.35, padding=reflect",
+            "apply": lambda image: sharpen_with_laplace(
+                image,
+                alpha=0.35,
+                padding=DEFAULT_PADDING,
+            ),
+        },
+        {
+            "filename": "07_unsharp_mask.png",
+            "filter_name": "Unsharp Mask",
+            "image": "pessoa-consulado-segurando-papel.jpg",
+            "reason": "tem detalhes finos e texto, bons para ver a mascara de detalhe voltando para a imagem.",
+            "params": "gaussiano size=7, sigma=1.5, amount=1.2, padding=reflect",
+            "apply": lambda image: unsharp_mask(
+                image,
+                size=7,
+                sigma=1.5,
+                amount=1.2,
+                padding=DEFAULT_PADDING,
+            ),
+        },
+        {
+            "filename": "08_emboss.png",
+            "filter_name": "Emboss",
+            "image": "caveira.jpg",
+            "reason": "tem contraste e textura forte, ideais para o efeito criativo de relevo.",
+            "params": "kernel emboss 3x3, padding=reflect",
+            "apply": lambda image: apply_emboss(image, padding=DEFAULT_PADDING),
+        },
+    ]
+
+    metadata = []
+
+    for experiment in experiments:
+        image_path = Path("imgs") / experiment["image"]
+        original = read_gray(image_path)
+        result = experiment["apply"](original)
+
+        output_path = output_dir / experiment["filename"]
+        _save_filter_comparison(
+            output_path,
+            original,
+            result,
+            experiment["filter_name"],
+            experiment["params"],
+        )
+
+        metadata.append({
+            "filter": experiment["filter_name"],
+            "image": image_path,
+            "reason": experiment["reason"],
+            "output": output_path,
+        })
+
+    return metadata
+
+
+def _apply_signed_kernel_for_view(img, kernel, padding=DEFAULT_PADDING):
+    """Aplica um kernel assinado e normaliza o modulo para visualizacao."""
+    response = convolve2d(img, kernel, padding=padding)
+    return to_uint8(np.abs(response), normalize=True)
+
+
+def _laplace_sharpening_kernel(alpha):
+    """Kernel equivalente de imagem_original - alpha * Laplace."""
+    return identity_kernel(3) - alpha * laplace_kernel()
+
+
+def _unsharp_mask_kernel(size, sigma, amount):
+    """Kernel equivalente de imagem + amount * (imagem - gaussiana)."""
+    return (1 + amount) * identity_kernel(size) - amount * gaussian_kernel(size, sigma)
+
+
+def _add_gaussian_noise(img, sigma=22.0, seed=7):
+    """Adiciona ruido gaussiano sintetico de forma reprodutivel."""
+    rng = np.random.default_rng(seed)
+    noise = rng.normal(loc=0.0, scale=sigma, size=img.shape)
+    return to_uint8(np.asarray(img, dtype=float) + noise)
+
+
+def _save_daily_pipeline_figure(output_path, images, titles, main_title):
+    """Salva uma figura comparativa para os pipelines do dia a dia."""
+    save_comparison_figure(
+        output_path,
+        images,
+        titles=titles,
+        cols=len(images),
+        figsize=(4 * len(images), 4),
+        main_title=main_title,
+        dpi=240,
+        interpolation="nearest",
+    )
+
+
+def run_daily_life_pipeline_experiments():
+    """Gera pipelines cotidianos que combinam filtros da Parte I.
+
+    Estes exemplos nao substituem os filtros obrigatorios. Eles mostram como
+    filtros convolucionais aparecem em tarefas praticas: reducao de ruido,
+    pre-processamento para bordas e combinacoes do tipo suavizar + derivar.
+    """
+    output_dir = Path("outputs") / "parte1_pipelines"
+    _reset_output_dir(output_dir)
+
+    # Imagem com texto, bandeiras, tijolos e contornos: boa para perceber ruido,
+    # perda de detalhe e diferenca entre bordas limpas e bordas contaminadas.
+    img = read_gray(Path("imgs") / "pessoa-consulado-segurando-papel.jpg")
+
+    # Simula ruido de sensor: variacoes aleatorias de intensidade, comuns em
+    # camera de celular quando ha pouca luz ou ISO alto.
+    noisy = _add_gaussian_noise(img, sigma=22.0, seed=42)
+
+    # 1) Reducao de ruido: filtros de suavizacao reduzem variacoes aleatorias,
+    # mas tambem podem apagar detalhes finos.
+    box_denoised = apply_box_blur(noisy, size=5, padding=DEFAULT_PADDING)
+    gaussian_denoised = apply_gaussian_blur(
+        noisy,
+        size=7,
+        sigma=1.4,
+        padding=DEFAULT_PADDING,
+    )
+    denoise_path = output_dir / "01_reducao_ruido.png"
+    _save_daily_pipeline_figure(
+        denoise_path,
+        [img, noisy, box_denoised, gaussian_denoised],
+        [
+            "original",
+            "com ruido gaussiano",
+            "caixa 5x5",
+            "gaussiano 7x7 sigma=1.4",
+        ],
+        "Pipeline do dia a dia - reducao de ruido\nsimula ruido de sensor em cameras/celulares",
+    )
+
+    # 2) Deteccao de bordas robusta: derivadas como Sobel amplificam ruido.
+    # Suavizar antes reduz bordas falsas, ideia usada por detectores como Canny.
+    sobel_noisy = apply_sobel(noisy, padding=DEFAULT_PADDING)
+    smoothed_for_sobel = apply_gaussian_blur(
+        noisy,
+        size=7,
+        sigma=1.4,
+        padding=DEFAULT_PADDING,
+    )
+    gaussian_sobel = apply_sobel(smoothed_for_sobel, padding=DEFAULT_PADDING)
+    sobel_path = output_dir / "02_bordas_robustas_sobel.png"
+    _save_daily_pipeline_figure(
+        sobel_path,
+        [noisy, sobel_noisy, smoothed_for_sobel, gaussian_sobel],
+        [
+            "imagem ruidosa",
+            "Sobel direto",
+            "gaussiano antes",
+            "Gaussiano + Sobel",
+        ],
+        "Pipeline do dia a dia - deteccao de bordas robusta\nderivadas amplificam ruido; suavizacao reduz bordas falsas",
+    )
+
+    # 3) Laplaciano de Gaussiano simplificado: o Laplace usa segunda derivada e
+    # e ainda mais sensivel a ruido. Suavizar antes deixa as bordas mais limpas.
+    laplace_noisy = apply_laplace(noisy, padding=DEFAULT_PADDING)
+    smoothed_for_laplace = apply_gaussian_blur(
+        noisy,
+        size=7,
+        sigma=1.4,
+        padding=DEFAULT_PADDING,
+    )
+    gaussian_laplace = apply_laplace(smoothed_for_laplace, padding=DEFAULT_PADDING)
+    log_path = output_dir / "03_laplaciano_gaussiano_simplificado.png"
+    _save_daily_pipeline_figure(
+        log_path,
+        [noisy, laplace_noisy, smoothed_for_laplace, gaussian_laplace],
+        [
+            "imagem ruidosa",
+            "Laplace direto",
+            "gaussiano antes",
+            "Gaussiano + Laplace",
+        ],
+        "Pipeline do dia a dia - Laplaciano de Gaussiano simplificado\nLaplace e sensivel a ruido; suavizacao gera bordas mais limpas",
+    )
+
+    metadata = [
+        {
+            "pipeline": "Reducao de ruido",
+            "output": denoise_path,
+            "summary": "simula ruido de sensor e compara suavizacao por caixa e gaussiano.",
+        },
+        {
+            "pipeline": "Deteccao de bordas robusta",
+            "output": sobel_path,
+            "summary": "mostra que Sobel direto amplifica ruido e que Gaussiano antes reduz bordas falsas.",
+        },
+        {
+            "pipeline": "Laplaciano de Gaussiano simplificado",
+            "output": log_path,
+            "summary": "mostra que suavizar antes do Laplace gera resposta menos contaminada por ruido.",
+        },
+    ]
+
+    for item in metadata:
+        print(f"{item['pipeline']}: {item['output']}")
+
+    return metadata
+
+
+def run_frequency_experiments():
+    """Gera analises em frequencia dos filtros/processos da Parte I.
+
+    As imagens filtradas continuam sendo geradas pelos filtros espaciais, que
+    usam `convolve2d` manual. O uso de `np.fft` fica encapsulado em
+    `frequency_analysis.py` apenas para visualizar espectros e respostas dos
+    kernels no relatorio.
+    """
+    output_dir = Path("outputs") / "parte1_frequencias"
+    _reset_output_dir(output_dir)
+
+    images = {
+        "shift": Path("imgs") / "pessoa-lado-bruxa-salem.jpg",
+        "smooth": Path("imgs") / "pessoa-consulado-segurando-papel.jpg",
+        "edges": Path("imgs") / "pessoas-estadio-futebol.jpg",
+        "emboss": Path("imgs") / "caveira.jpg",
+    }
+
+    shift_size = 31
+    shift_di = 15
+    shift_dj = 15
+    box_size = 9
+    gaussian_size = 9
+    gaussian_sigma = 1.8
+    laplace_alpha = 0.35
+    unsharp_size = 7
+    unsharp_sigma = 1.5
+    unsharp_amount = 1.2
+
+    sobel_i = sobel_i_kernel()
+    sobel_j = sobel_j_kernel()
+
+    experiments = [
+        {
+            "filename": "01_shift.png",
+            "filter_name": "Shift",
+            "image": images["shift"],
+            "kernel": shift_kernel(shift_size, shift_di, shift_dj),
+            "params": (
+                "kernel 31x31, di=15, dj=15, padding=wrap; "
+                "shift altera principalmente a fase, entao a magnitude quase nao muda"
+            ),
+            "apply": lambda image: apply_shift(
+                image,
+                size=shift_size,
+                di=shift_di,
+                dj=shift_dj,
+                padding="wrap",
+            ),
+            "summary": "magnitude quase plana; deslocamento muda fase, nao conteudo de frequencias.",
+        },
+        {
+            "filename": "02_media_caixa.png",
+            "filter_name": "Caixa/Media",
+            "image": images["smooth"],
+            "kernel": box_kernel(box_size),
+            "params": (
+                "size=9, padding=reflect; resposta lembra sinc 2D e atua como passa-baixa"
+            ),
+            "apply": lambda image: apply_box_blur(
+                image,
+                size=box_size,
+                padding=DEFAULT_PADDING,
+            ),
+            "summary": "passa-baixa com lobos de sinc; suaviza detalhes finos.",
+        },
+        {
+            "filename": "03_gaussiano.png",
+            "filter_name": "Gaussiano",
+            "image": images["smooth"],
+            "kernel": gaussian_kernel(gaussian_size, gaussian_sigma),
+            "params": (
+                "size=9, sigma=1.8, padding=reflect; resposta suave concentrada no centro"
+            ),
+            "apply": lambda image: apply_gaussian_blur(
+                image,
+                size=gaussian_size,
+                sigma=gaussian_sigma,
+                padding=DEFAULT_PADDING,
+            ),
+            "summary": "passa-baixa suave; reduz altas frequencias sem os lobos fortes da media.",
+        },
+        {
+            "filename": "04_laplace.png",
+            "filter_name": "Laplace",
+            "image": images["edges"],
+            "kernel": laplace_kernel(),
+            "params": (
+                "kernel 3x3 centro=-8, padding=reflect; centro suprimido e altas frequencias realcadas"
+            ),
+            "apply": lambda image: apply_laplace(image, padding=DEFAULT_PADDING),
+            "summary": "passa-alta; responde pouco a regioes uniformes e muito a bordas.",
+        },
+        {
+            "filename": "05_sobel_horizontal.png",
+            "filter_name": "Sobel i - bordas horizontais",
+            "image": images["edges"],
+            "kernel": sobel_i,
+            "params": (
+                "Sobel i, padding=reflect; resposta direcional para variacoes no eixo i"
+            ),
+            "apply": lambda image: _apply_signed_kernel_for_view(
+                image,
+                sobel_i,
+                padding=DEFAULT_PADDING,
+            ),
+            "summary": "passa-alta direcional; enfatiza bordas horizontais.",
+        },
+        {
+            "filename": "06_sobel_vertical.png",
+            "filter_name": "Sobel j - bordas verticais",
+            "image": images["edges"],
+            "kernel": sobel_j,
+            "params": (
+                "Sobel j, padding=reflect; resposta direcional para variacoes no eixo j"
+            ),
+            "apply": lambda image: _apply_signed_kernel_for_view(
+                image,
+                sobel_j,
+                padding=DEFAULT_PADDING,
+            ),
+            "summary": "passa-alta direcional; enfatiza bordas verticais.",
+        },
+        {
+            "filename": "07_sobel_magnitude.png",
+            "filter_name": "Sobel magnitude",
+            "image": images["edges"],
+            "response": lambda shape: combined_kernel_frequency_response(
+                [sobel_i, sobel_j],
+                shape,
+            ),
+            "params": (
+                "sqrt(Gi^2 + Gj^2), padding=reflect; nao e um unico kernel, combina Sobel i e j"
+            ),
+            "response_title": "resposta combinada |Sobel|",
+            "apply": lambda image: apply_sobel(image, padding=DEFAULT_PADDING),
+            "summary": "combina duas direcoes; realca bordas em varias orientacoes.",
+        },
+        {
+            "filename": "08_nitidez_laplace.png",
+            "filter_name": "Aumento de nitidez com Laplace",
+            "image": images["smooth"],
+            "kernel": _laplace_sharpening_kernel(laplace_alpha),
+            "params": (
+                "imagem - 0.35 * Laplace; preserva a imagem e amplifica altas frequencias"
+            ),
+            "apply": lambda image: sharpen_with_laplace(
+                image,
+                alpha=laplace_alpha,
+                padding=DEFAULT_PADDING,
+            ),
+            "summary": "mantem baixas frequencias da imagem original e reforca detalhes.",
+        },
+        {
+            "filename": "09_unsharp_mask.png",
+            "filter_name": "Unsharp Mask",
+            "image": images["smooth"],
+            "kernel": _unsharp_mask_kernel(unsharp_size, unsharp_sigma, unsharp_amount),
+            "params": (
+                "gaussiano size=7, sigma=1.5, amount=1.2; altas frequencias aumentadas suavemente"
+            ),
+            "apply": lambda image: unsharp_mask(
+                image,
+                size=unsharp_size,
+                sigma=unsharp_sigma,
+                amount=unsharp_amount,
+                padding=DEFAULT_PADDING,
+            ),
+            "summary": "preserva estrutura geral e devolve parte dos detalhes removidos pelo blur.",
+        },
+        {
+            "filename": "10_emboss.png",
+            "filter_name": "Emboss",
+            "image": images["emboss"],
+            "kernel": emboss_kernel(),
+            "params": (
+                "kernel emboss 3x3, padding=reflect; passa-alta direcional com aparencia de relevo"
+            ),
+            "apply": lambda image: apply_emboss(image, padding=DEFAULT_PADDING),
+            "summary": "passa-alta direcional; bordas ganham efeito de iluminacao lateral.",
+        },
+    ]
+
+    metadata = []
+
+    for experiment in experiments:
+        original = read_gray(experiment["image"])
+        filtered = experiment["apply"](original)
+        output_path = output_dir / experiment["filename"]
+
+        if "kernel" in experiment:
+            save_frequency_analysis_figure(
+                output_path,
+                original,
+                experiment["kernel"],
+                filtered,
+                experiment["filter_name"],
+                params=experiment["params"],
+            )
+        else:
+            response_img = experiment["response"](original.shape)
+            save_frequency_analysis_figure_from_response(
+                output_path,
+                original,
+                response_img,
+                filtered,
+                experiment["filter_name"],
+                params=experiment["params"],
+                response_title=experiment["response_title"],
+            )
+
+        metadata.append({
+            "filter": experiment["filter_name"],
+            "image": experiment["image"],
+            "output": output_path,
+            "summary": experiment["summary"],
+        })
+
+        print(f"{experiment['filter_name']}: {output_path}")
+
+    return metadata

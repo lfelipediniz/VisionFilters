@@ -140,6 +140,8 @@ def save_comparison_figure(
     cmap="gray",
     normalize=False,
     main_title=None,
+    dpi=220,
+    interpolation="nearest",
 ):
     """Salva uma figura comparativa com varias imagens lado a lado."""
     if len(images) == 0:
@@ -171,11 +173,12 @@ def save_comparison_figure(
         img = np.asarray(img)
 
         if img.ndim == 2:
-            ax.imshow(img, cmap=cmap, vmin=0, vmax=255)
+            ax.imshow(img, cmap=cmap, vmin=0, vmax=255, interpolation=interpolation)
         else:
-            ax.imshow(to_uint8(img))
+            ax.imshow(to_uint8(img), interpolation=interpolation)
 
         ax.set_title(title)
+        ax.set_aspect("equal")
         ax.axis("off")
 
     for ax in axes[n_images:]:
@@ -184,8 +187,8 @@ def save_comparison_figure(
     if main_title is not None:
         fig.suptitle(main_title)
 
-    fig.tight_layout()
-    fig.savefig(path, bbox_inches="tight", dpi=150)
+    fig.tight_layout(pad=0.8)
+    fig.savefig(path, bbox_inches="tight", dpi=dpi)
     plt.close(fig)
 
 
