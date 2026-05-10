@@ -1,56 +1,119 @@
 """Filtros e processos espaciais da Parte I.
 
 Conceito:
-Os filtros espaciais operam diretamente nos pixels. Aqui ficara a camada que
-combina kernels com a convolucao manual e organiza processos como nitidez,
-unsharp mask e o filtro criativo.
+Os filtros espaciais operam diretamente nos pixels. Este modulo combina os
+kernels de `kernels.py` com a convolucao manual de `convolution.py`.
 """
 
+import numpy as np
 
-def apply_shift(img, size=3, direction="down_right", padding="constant"):
-    """Aplica o filtro de shift usando convolucao manual."""
-    raise NotImplementedError("Conectar shift_kernel com convolve_manual.")
-
-
-def apply_box_blur(img, size=3, padding="constant"):
-    """Aplica o filtro caixa/media usando convolucao manual."""
-    raise NotImplementedError("Conectar box_kernel com convolve_manual.")
-
-
-def apply_gaussian_blur(img, size=5, sigma=1.0, padding="constant"):
-    """Aplica o filtro gaussiano usando convolucao manual."""
-    raise NotImplementedError("Conectar gaussian_kernel com convolve_manual.")
-
-
-def apply_laplace(img, kind=8, padding="constant"):
-    """Aplica o filtro de Laplace usando convolucao manual."""
-    raise NotImplementedError("Conectar laplace_kernel com convolve_manual.")
+from src.convolution import convolve2d
+from src.image_utils import to_uint8
+from src.kernels import (
+    box_kernel,
+    emboss_kernel,
+    gaussian_kernel,
+    laplace_kernel,
+    shift_kernel,
+    sobel_i_kernel,
+    sobel_j_kernel,
+)
 
 
-def apply_sobel(img, padding="constant"):
-    """Aplica Sobel e devolve componentes e magnitude do gradiente."""
-    raise NotImplementedError("Conectar sobel_kernels com convolve_manual.")
+def _as_gray_float(img):
+    """Garante que os filtros recebam uma imagem 2D numerica."""
+    img = np.asarray(img, dtype=float)
+
+    if img.ndim != 2:
+        raise ValueError("Os filtros espaciais esperam uma imagem 2D em escala de cinza.")
+
+    return img
 
 
-def sharpen_laplace(img, alpha=1.0, padding="constant"):
-    """Aumenta nitidez combinando imagem original e resposta do Laplace."""
-    raise NotImplementedError("Implementar aumento de nitidez com Laplace.")
+def _apply_kernel(img, kernel, padding):
+    """Aplica um kernel com a convolucao manual centralizada do projeto."""
+    return convolve2d(_as_gray_float(img), kernel, padding=padding)
 
 
-def unsharp_mask(img, blur_size=5, sigma=1.0, amount=1.0, padding="constant"):
-    """Aumenta nitidez subtraindo uma versao borrada da imagem original."""
-    raise NotImplementedError("Implementar mascara de des-nitidez.")
+def _laplace_response(img, padding):
+    """Calcula a resposta assinada do Laplace, sem normalizar."""
+    return _apply_kernel(img, laplace_kernel(), padding)
 
 
-def apply_emboss(img, direction="down_right", padding="constant"):
-    """Aplica o filtro criativo de relevo usando convolucao manual."""
-    raise NotImplementedError("Conectar emboss_kernel com convolve_manual.")
+def apply_shift(img, size=3, di=1, dj=1, padding="zero"):
+    """Desloca a imagem usando um kernel com um unico valor 1."""
+    response = _apply_kernel(img, shift_kernel(size, di, dj), padding)
+    return to_uint8(response)
 
 
-def creative_convolution_process(img, padding="constant"):
-    """Executa o processo criativo escolhido para a Parte I.
+def apply_box_blur(img, size=3, padding="zero"):
+    """Aplica filtro caixa/media usando pesos iguais na vizinhanca."""
+    response = _apply_kernel(img, box_kernel(size), padding)
+    return to_uint8(response)
 
-    Plano atual: usar relevo/emboss, que e simples de explicar e deixa claro
-    como um kernel direcional realca transicoes de intensidade.
+
+def apply_gaussian_blur(img, size=5, sigma=1.0, padding="zero"):
+    """Aplica filtro gaussiano, que suaviza dando mais peso ao centro."""
+    response = _apply_kernel(img, gaussian_kernel(size, sigma), padding)
+    return to_uint8(response)
+
+
+def apply_laplace(img, padding="zero"):
+    """Aplica Laplace e normaliza a resposta para visualizacao.
+
+    A resposta crua pode ter valores negativos e positivos. Para salvar ou
+    mostrar como imagem, espalhamos esses valores para [0, 255].
     """
-    raise NotImplementedError("Definir e implementar o processo criativo.")
+    response = _laplace_response(img, padding)
+    return to_uint8(response, normalize=True)
+
+
+def apply_sobel(img, padding="zero"):
+    """Aplica Sobel e combina as direcoes pela magnitude do gradiente."""
+    grad_i = _apply_kernel(img, sobel_i_kernel(), padding)
+    grad_j = _apply_kernel(img, sobel_j_kernel(), padding)
+
+    magnitude = np.sqrt(grad_i**2 + grad_j**2)
+    return to_uint8(magnitude, normalize=True)
+
+
+def sharpen_with_laplace(img, alpha=1.0, padding="zero"):
+    """Aumenta nitidez usando imagem_original - alpha * Laplace."""
+    img = _as_gray_float(img)
+    laplace = _laplace_response(img, padding)
+    sharpened = img - alpha * laplace
+    return to_uint8(sharpened)
+
+
+def sharpen_laplace(img, alpha=1.0, padding="zero"):
+    """Alias mantido para a nomenclatura planejada inicialmente."""
+    return sharpen_with_laplace(img, alpha=alpha, padding=padding)
+
+
+def unsharp_mask(img, size=5, sigma=1.0, amount=1.0, padding="zero", blur_size=None):
+    """Aumenta nitidez somando uma mascara de detalhes a imagem original.
+
+    Formula:
+    borrada = gaussiano(imagem)
+    mascara = imagem - borrada
+    resultado = imagem + amount * mascara
+    """
+    if blur_size is not None:
+        size = blur_size
+
+    img = _as_gray_float(img)
+    blurred = _apply_kernel(img, gaussian_kernel(size, sigma), padding)
+    mask = img - blurred
+    result = img + amount * mask
+    return to_uint8(result)
+
+
+def apply_emboss(img, padding="zero"):
+    """Aplica o filtro criativo de relevo/emboss."""
+    response = _apply_kernel(img, emboss_kernel(), padding)
+    return to_uint8(response, normalize=True)
+
+
+def creative_convolution_process(img, padding="zero"):
+    """Executa o processo criativo escolhido para a Parte I: emboss."""
+    return apply_emboss(img, padding=padding)
