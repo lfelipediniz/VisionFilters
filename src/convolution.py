@@ -10,6 +10,16 @@ scipy.signal.convolve2d ou ndimage.convolve.
 import numpy as np
 
 
+PADDING_ALIASES = {
+    "none": "none",
+    "zero": "zero",
+    "constant": "zero",
+    "edge": "edge",
+    "reflect": "reflect",
+    "wrap": "wrap",
+}
+
+
 def validate_kernel(kernel):
     """Confere se o kernel e bidimensional e tem dimensoes impares."""
     kernel = np.asarray(kernel, dtype=float)
@@ -24,28 +34,114 @@ def validate_kernel(kernel):
     return kernel
 
 
-def pad_image(img, pad_h, pad_w, mode="constant"):
+def _normalize_padding_name(mode):
+    """Padroniza nomes de padding aceitos pelo projeto."""
+    if mode not in PADDING_ALIASES:
+        valid_modes = ", ".join(sorted(PADDING_ALIASES))
+        raise ValueError(f"Padding invalido: {mode}. Use um destes: {valid_modes}.")
+
+    return PADDING_ALIASES[mode]
+
+
+def pad_image(img, pad_h, pad_w, mode="zero"):
     """Prepara a imagem para tratar bordas durante a convolucao.
 
-    Sera completada quando compararmos os efeitos dos paddings:
-    - constant: completa com zero
-    - edge: repete a borda
-    - reflect: espelha a imagem
-    - wrap: conecta lados opostos
+    Modos aceitos:
+    - none: nao adiciona borda
+    - zero: completa com zeros
+    - edge: repete o pixel mais proximo da borda
+    - reflect: espelha a imagem na borda
+    - wrap: conecta lados opostos da imagem
     """
-    raise NotImplementedError("Implementar os modos de padding na etapa de convolucao.")
+    img = np.asarray(img)
+
+    if img.ndim != 2:
+        raise ValueError("A imagem deve ser 2D, em escala de cinza.")
+
+    if pad_h < 0 or pad_w < 0:
+        raise ValueError("Os tamanhos de padding devem ser nao negativos.")
+
+    pad_h = int(pad_h)
+    pad_w = int(pad_w)
+    mode = _normalize_padding_name(mode)
+
+    if mode == "none" or (pad_h == 0 and pad_w == 0):
+        return img.copy()
+
+    pad_width = ((pad_h, pad_h), (pad_w, pad_w))
+
+    if mode == "zero":
+        return np.pad(img, pad_width, mode="constant", constant_values=0)
+
+    return np.pad(img, pad_width, mode=mode)
 
 
 def conv_op(i, j, img, kernel):
-    """Calcula um unico pixel filtrado a partir da vizinhanca de (i, j)."""
-    raise NotImplementedError("Implementar a operacao local da convolucao manual.")
+    """Calcula um unico pixel filtrado a partir da vizinhanca de (i, j).
 
-
-def convolve_manual(img, kernel, padding="constant"):
-    """Aplica convolucao manual em uma imagem 2D.
-
-    Esta sera a funcao central da Parte I. Os filtros obrigatorios deverao
-    chamar esta funcao em vez de usar convolucoes prontas de bibliotecas.
+    Esta funcao assume que a imagem e o kernel ja foram validados por
+    convolve2d. Como ela roda para cada pixel, deixamos aqui apenas o essencial.
     """
-    raise NotImplementedError("Implementar a convolucao manual completa.")
+    k_h, k_w = kernel.shape
+    a = (k_h - 1) // 2
+    b = (k_w - 1) // 2
 
+    i_start = i - a
+    i_end = i + a + 1
+    j_start = j - b
+    j_end = j + b + 1
+
+    if i_start < 0 or j_start < 0 or i_end > img.shape[0] or j_end > img.shape[1]:
+        raise ValueError("A vizinhanca do pixel saiu dos limites da imagem.")
+
+    # A vizinhanca tem exatamente o mesmo tamanho do kernel centralizado.
+    neighbourhood = img[i_start:i_end, j_start:j_end]
+
+    # Multiplicacao ponto a ponto seguida do somatorio, como no codigo da aula.
+    return (kernel * neighbourhood).sum()
+
+
+def convolve2d(img, kernel, padding="zero"):
+    """Aplica convolucao 2D manual em uma imagem em escala de cinza.
+
+    O kernel e invertido antes da aplicacao para realizar convolucao de
+    verdade. Sem essa inversao, a operacao seria uma correlacao.
+    """
+    img = np.asarray(img, dtype=float)
+    kernel = validate_kernel(kernel)
+    padding = _normalize_padding_name(padding)
+
+    if img.ndim != 2:
+        raise ValueError("A imagem deve ser 2D, em escala de cinza.")
+
+    new_img = np.zeros_like(img, dtype=float)
+    h, w = img.shape
+
+    # np.flip inverte linhas e colunas, seguindo a ideia usada pela professora.
+    flipped_kernel = np.flip(kernel)
+    k_h, k_w = flipped_kernel.shape
+    a = (k_h - 1) // 2
+    b = (k_w - 1) // 2
+
+    if padding == "none":
+        # Mesmo comportamento didatico do codigo da aula: so calculamos pixels
+        # cuja vizinhanca inteira existe dentro da imagem original.
+        for i in range(a, h - a):
+            for j in range(b, w - b):
+                new_img[i, j] = conv_op(i, j, img, flipped_kernel)
+
+        return new_img
+
+    img_pad = pad_image(img, a, b, mode=padding)
+
+    # Na imagem com padding, o pixel original (i, j) fica em (i+a, j+b).
+    for i in range(h):
+        for j in range(w):
+            new_img[i, j] = conv_op(i + a, j + b, img_pad, flipped_kernel)
+
+    return new_img
+
+
+def convolve_manual(img, kernel, padding="zero"):
+    """Alias da funcao central da Parte I, mantido para clareza do projeto."""
+    return convolve2d(img, kernel, padding=padding)
