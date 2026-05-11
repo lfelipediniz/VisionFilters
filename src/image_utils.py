@@ -1,5 +1,4 @@
 # funcoes auxiliares pra leitura, conversao e salvamento de imagens
-#
 # antes de aplicar os filtros convolucionais precisa padronizar a entrada.
 # centralizei aqui operacoes simples como leitura com imageio, conversao pra
 # tons de cinza, normalizacao min-max, recorte central e salvamento
