@@ -1,15 +1,18 @@
-"""DFT e IDFT manuais para a Parte II.
-
-Este modulo nao usa transformadas prontas de Fourier. A ideia didatica e
-mostrar que a transformada 2D pode ser calculada por separabilidade: uma DFT
-nas linhas e outra nas colunas, usando multiplicacao de matrizes.
-"""
+# DFT e IDFT manuais pra Parte II
+#
+# aqui nao uso transformadas prontas de Fourier. a ideia eh mostrar que a
+# transformada 2D pode ser calculada por separabilidade, fazendo uma DFT nas
+# linhas e outra nas colunas usando multiplicacao de matrizes, como vimos em aula
 
 import numpy as np
 
 
 def dft_matrix(N):
-    """Cria a matriz da DFT com W[k, n] = exp(-j * 2*pi*k*n/N)."""
+    """Cria a matriz da DFT com W[k, n] = exp(-j * 2*pi*k*n/N).
+
+    Cada elemento da matriz eh uma exponencial complexa que define a base de
+    Fourier. Multiplicar o sinal por essa matriz projeta ele nas frequencias.
+    """
     N = int(N)
 
     if N <= 0:
@@ -21,12 +24,12 @@ def dft_matrix(N):
 
 
 def idft_matrix(N):
-    """Cria a matriz da IDFT usando o conjugado da DFT dividido por N."""
+    # cria a matriz da IDFT usando o conjugado da DFT dividido por N
     return np.conjugate(dft_matrix(N)) / int(N)
 
 
 def dft1_manual(signal):
-    """Calcula a DFT 1D por multiplicacao matricial."""
+    # calcula a DFT 1D por multiplicacao matricial
     signal = np.asarray(signal, dtype=complex)
 
     if signal.ndim != 1:
@@ -37,7 +40,7 @@ def dft1_manual(signal):
 
 
 def idft1_manual(F):
-    """Reconstroi um sinal 1D a partir da DFT manual."""
+    # reconstroi um sinal 1D a partir da DFT manual
     F = np.asarray(F, dtype=complex)
 
     if F.ndim != 1:
@@ -51,11 +54,11 @@ def idft1_manual(F):
 def dft2_manual(img):
     """Calcula a DFT 2D manual usando separabilidade.
 
-    Para uma imagem MxN:
-    F = W_M @ img @ W_N
-
-    Como W[k, n] depende do produto k*n, a matriz e simetrica e serve para a
-    multiplicacao pela direita nas colunas.
+    Pra uma imagem MxN a conta fica F = W_M @ img @ W_N. A propriedade de
+    separabilidade permite decompor a transformada 2D em duas 1D, uma pras
+    linhas e outra pras colunas. Como W[k, n] depende do produto k*n, a
+    matriz eh simetrica e serve pra multiplicacao pela direita nas colunas.
+    Essa abordagem matricial foi a que vimos em aula.
     """
     img = np.asarray(img, dtype=float)
 
@@ -69,7 +72,7 @@ def dft2_manual(img):
 
 
 def idft2_manual(F):
-    """Reconstroi uma imagem 2D usando as matrizes inversas da DFT."""
+    # reconstroi uma imagem 2D usando as matrizes inversas da DFT
     F = np.asarray(F, dtype=complex)
 
     if F.ndim != 2:
@@ -83,7 +86,7 @@ def idft2_manual(F):
 
 
 def _shift_axis(values, split, axis):
-    """Move a segunda parte de um eixo para antes da primeira."""
+    # move a segunda parte de um eixo pra antes da primeira
     values = np.asarray(values)
     first = np.take(values, indices=np.arange(split, values.shape[axis]), axis=axis)
     second = np.take(values, indices=np.arange(0, split), axis=axis)
@@ -91,7 +94,12 @@ def _shift_axis(values, split, axis):
 
 
 def fftshift_manual(F):
-    """Centraliza as baixas frequencias sem usar funcao pronta de shift."""
+    """Centraliza as baixas frequencias sem usar funcao pronta de shift.
+
+    A DFT coloca a componente DC no canto (0,0). Esse shift troca os quadrantes
+    pra deixar a DC no centro, que eh muito mais facil de interpretar visualmente.
+    A gente viu em aula que essa reorganizacao eh padrao pra visualizar espectros.
+    """
     shifted = np.asarray(F)
 
     for axis, size in enumerate(shifted.shape):
@@ -102,7 +110,7 @@ def fftshift_manual(F):
 
 
 def ifftshift_manual(F):
-    """Desfaz o deslocamento feito por fftshift_manual."""
+    # desfaz o deslocamento feito por fftshift_manual
     shifted = np.asarray(F)
 
     for axis, size in enumerate(shifted.shape):
@@ -113,7 +121,7 @@ def ifftshift_manual(F):
 
 
 def _normalize_visual(values):
-    """Normaliza uma matriz numerica para visualizacao em uint8."""
+    # normaliza uma matriz numerica pra visualizacao em uint8
     values = np.asarray(values, dtype=float)
     finite_mask = np.isfinite(values)
 
@@ -134,7 +142,7 @@ def _normalize_visual(values):
 
 
 def magnitude_spectrum(F):
-    """Calcula log(1 + abs(F)) centralizado e normalizado para visualizacao."""
+    # calcula log(1 + abs(F)) centralizado e normalizado pra visualizacao
     F = np.asarray(F, dtype=complex)
     centered = fftshift_manual(F)
     magnitude = np.log1p(np.abs(centered))
@@ -142,7 +150,12 @@ def magnitude_spectrum(F):
 
 
 def center_frequency_mask(shape, radius):
-    """Cria uma mascara circular de baixas frequencias no centro do espectro."""
+    """Cria uma mascara circular de baixas frequencias no centro do espectro.
+
+    A ideia eh simples: tudo que esta dentro do raio passa, e tudo fora eh
+    zerado. Eh basicamente um filtro passa-baixa ideal no dominio da frequencia,
+    como vimos em aula quando estudamos filtragem em frequencia.
+    """
     if len(shape) != 2:
         raise ValueError("shape deve ter duas dimensoes.")
 
@@ -162,7 +175,12 @@ def center_frequency_mask(shape, radius):
 
 
 def partial_reconstruction(F, radius):
-    """Reconstroi a imagem usando apenas baixas frequencias ate certo raio."""
+    """Reconstroi a imagem usando apenas baixas frequencias ate certo raio.
+
+    Aplica a mascara circular no espectro centralizado e depois faz a IDFT pra
+    voltar pro dominio espacial. Quanto menor o raio, mais borrada fica a
+    reconstrucao porque so as frequencias mais baixas sobrevivem.
+    """
     F = np.asarray(F, dtype=complex)
 
     if F.ndim != 2:
@@ -177,5 +195,5 @@ def partial_reconstruction(F, radius):
 
 
 def reconstruction_sequence(F, radii):
-    """Retorna varias reconstrucoes parciais para uma lista de raios."""
+    # retorna varias reconstrucoes parciais pra uma lista de raios
     return [partial_reconstruction(F, radius) for radius in radii]

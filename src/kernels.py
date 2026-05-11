@@ -1,15 +1,15 @@
-"""Geradores de kernels para filtros convolucionais.
-
-Conceito:
-Um kernel e uma pequena matriz de pesos. Cada filtro muda esses pesos para
-produzir deslocamento, suavizacao, deteccao de bordas ou realce de detalhes.
-"""
+# geradores de kernels para filtros convolucionais
+#
+# um kernel eh basicamente uma pequena matriz de pesos. cada filtro muda esses
+# pesos pra produzir efeitos diferentes como deslocamento, suavizacao, deteccao
+# de bordas ou realce de detalhes. em aula a gente viu varios desses kernels
+# e como eles se comportam no dominio espacial e em frequencia
 
 import numpy as np
 
 
 def _validate_odd_size(size):
-    """Confere se o tamanho do kernel e impar e positivo."""
+    # confere se o tamanho do kernel eh impar e positivo
     size = int(size)
 
     if size <= 0:
@@ -24,8 +24,9 @@ def _validate_odd_size(size):
 def shift_kernel(size, di=1, dj=1):
     """Kernel de deslocamento.
 
-    Ideia: colocar um unico peso 1 fora do centro desloca a imagem porque cada
-    pixel passa a copiar um vizinho.
+    A ideia eh colocar um unico peso 1 fora do centro, assim cada pixel passa
+    a copiar um vizinho e a imagem inteira se desloca. Em aula vimos que isso
+    muda a fase no dominio da frequencia mas nao altera a magnitude.
     """
     size = _validate_odd_size(size)
     di = int(di)
@@ -44,10 +45,11 @@ def shift_kernel(size, di=1, dj=1):
 
 
 def box_kernel(size):
-    """Kernel caixa/media.
+    """Kernel caixa (filtro de media).
 
-    Ideia: todos os vizinhos recebem o mesmo peso, entao o resultado e a media
-    local e tende a suavizar ruido e detalhes finos.
+    Todos os vizinhos recebem o mesmo peso, entao o resultado eh a media local.
+    Isso tende a suavizar ruido e detalhes finos. Em frequencia ele se comporta
+    como um passa-baixa com formato de sinc, que a gente viu em aula.
     """
     size = _validate_odd_size(size)
     return np.ones((size, size), dtype=float) / float(size**2)
@@ -56,8 +58,10 @@ def box_kernel(size):
 def gaussian_kernel(size, sigma):
     """Kernel gaussiano.
 
-    Ideia: vizinhos proximos do centro pesam mais que os distantes, suavizando
-    de modo mais natural que o filtro de caixa.
+    Vizinhos proximos do centro pesam mais que os distantes, suavizando de modo
+    mais natural que o filtro de caixa. A gaussiana eh a unica funcao que eh
+    igual no dominio espacial e no dominio da frequencia, entao nao gera aqueles
+    lobos laterais que aparecem no sinc do filtro de media.
     """
     size = _validate_odd_size(size)
     sigma = float(sigma)
@@ -79,8 +83,9 @@ def gaussian_kernel(size, sigma):
 def laplace_kernel(kind=8):
     """Kernel de Laplace.
 
-    Ideia: aproxima a segunda derivada da imagem, destacando mudancas bruscas
-    de intensidade, especialmente bordas.
+    Aproxima a segunda derivada da imagem, destacando mudancas bruscas de
+    intensidade (bordas). Em aula vimos que ele funciona como um filtro
+    passa-alta, zerando regioes uniformes e respondendo forte onde tem transicao.
     """
     if kind != 8:
         raise ValueError("Nesta Parte I, use o Laplace 3x3 com 8 vizinhos.")
@@ -93,10 +98,7 @@ def laplace_kernel(kind=8):
 
 
 def sobel_i_kernel():
-    """Kernel de Sobel para variacao vertical.
-
-    Realca mudancas ao longo do eixo i, isto e, bordas horizontais.
-    """
+    # kernel de Sobel pra variacao vertical, realca bordas horizontais
     return np.array([
         [-1, -2, -1],
         [0, 0, 0],
@@ -105,10 +107,7 @@ def sobel_i_kernel():
 
 
 def sobel_j_kernel():
-    """Kernel de Sobel para variacao horizontal.
-
-    Realca mudancas ao longo do eixo j, isto e, bordas verticais.
-    """
+    # kernel de Sobel pra variacao horizontal, realca bordas verticais
     return np.array([
         [-1, 0, 1],
         [-2, 0, 2],
@@ -117,19 +116,21 @@ def sobel_j_kernel():
 
 
 def sobel_kernels():
-    """Kernels de Sobel nas direcoes horizontal e vertical.
+    """Retorna os dois kernels de Sobel (horizontal e vertical).
 
-    Ideia: combina uma derivada em uma direcao com suavizacao na outra para
-    medir bordas horizontais e verticais.
+    A ideia do Sobel eh combinar uma derivada em uma direcao com suavizacao
+    na outra, pra medir bordas de forma mais robusta que uma derivada simples.
+    Em aula vimos que o gradiente combina as duas componentes pela magnitude.
     """
     return sobel_i_kernel(), sobel_j_kernel()
 
 
 def emboss_kernel():
-    """Kernel criativo de relevo/emboss.
+    """Kernel criativo de relevo (emboss).
 
-    Ideia: pesos negativos de um lado e positivos do outro simulam uma luz
-    direcional. Regioes uniformes ficam quase neutras e bordas viram relevo.
+    Pesos negativos de um lado e positivos do outro simulam uma luz direcional.
+    Regioes uniformes ficam quase neutras e bordas viram relevo. Escolhi esse
+    como meu filtro criativo porque o efeito visual eh bem interessante.
     """
     return np.array([
         [-2, -1, 0],
@@ -139,7 +140,7 @@ def emboss_kernel():
 
 
 def identity_kernel(size=3):
-    """Kernel identidade, util para testes da arquitetura."""
+    # kernel identidade, util pra testes da arquitetura
     size = _validate_odd_size(size)
     kernel = np.zeros((size, size), dtype=float)
     kernel[size // 2, size // 2] = 1

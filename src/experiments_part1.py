@@ -1,9 +1,8 @@
-"""Experimentos especificos da Parte I do trabalho.
-
-Este arquivo guarda execucoes pequenas e direcionadas para gerar figuras do
-relatorio. A primeira delas compara como diferentes paddings afetam filtros
-convolucionais.
-"""
+# experimentos especificos da Parte I do trabalho
+#
+# aqui ficam as execucoes direcionadas pra gerar as figuras do relatorio.
+# tem comparacao de paddings, galeria de filtros, pipelines do dia a dia
+# e analise em frequencia de cada filtro
 
 from pathlib import Path
 import shutil
@@ -44,7 +43,7 @@ DEFAULT_PADDING = "reflect"
 
 
 def _reset_output_dir(output_dir):
-    """Remove resultados antigos para evitar misturar imagens de execucoes anteriores."""
+    # remove resultados antigos pra nao misturar imagens de execucoes anteriores
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for path in output_dir.iterdir():
@@ -58,7 +57,7 @@ def _reset_output_dir(output_dir):
 
 
 def _save_filter_comparison(output_path, original, result, filter_name, params):
-    """Salva original e resultado filtrado em uma figura comparativa."""
+    # salva original e resultado filtrado numa figura comparativa
     save_comparison_figure(
         output_path,
         [original, result],
@@ -70,14 +69,14 @@ def _save_filter_comparison(output_path, original, result, filter_name, params):
 
 
 def _top_left_crop(img, size):
-    """Recorta o canto superior esquerdo para destacar artefatos de borda."""
+    # recorta o canto superior esquerdo pra destacar artefatos de borda
     img = np.asarray(img)
     size = min(int(size), img.shape[0], img.shape[1])
     return img[:size, :size]
 
 
 def _save_padding_figure(output_path, original, results, filter_name, params, crop_size=None):
-    """Salva uma comparacao dos modos de padding para um filtro."""
+    # salva uma comparacao dos modos de padding pra um filtro
     images = [original] + [results[padding] for padding in PADDING_MODES]
     titles = ["original"] + [f"padding={padding}" for padding in PADDING_MODES]
 
@@ -102,9 +101,10 @@ def _save_padding_figure(output_path, original, results, filter_name, params, cr
 def run_padding_experiment():
     """Gera figuras comparando paddings da Parte I.
 
-    A imagem escolhida foi `pessoa-lado-bruxa-salem.jpg`, porque tem fundo
-    claro, arvores finas e objetos encostando em regioes proximas das bordas.
-    Isso torna os artefatos de padding mais faceis de perceber.
+    Escolhi a imagem pessoa-lado-bruxa-salem.jpg porque tem fundo claro, arvores
+    finas e objetos encostando nas bordas, o que torna os artefatos de padding
+    mais faceis de perceber. Em aula vimos que o modo de tratamento das bordas
+    pode gerar artefatos visiveis, principalmente com kernels grandes.
     """
     image_path = Path("imgs") / "pessoa-lado-bruxa-salem.jpg"
     output_dir = Path("outputs") / "parte1_padding"
@@ -114,8 +114,7 @@ def run_padding_experiment():
     full_dir.mkdir(parents=True, exist_ok=True)
     crops_dir.mkdir(parents=True, exist_ok=True)
 
-    # As imagens de entrada ja foram preparadas em formato quadrado, entao
-    # usamos a imagem inteira para preservar a composicao escolhida.
+    # uso a imagem inteira pra preservar a composicao escolhida
     img = read_gray(image_path)
     crop_size = 220
 
@@ -213,7 +212,7 @@ def run_padding_experiment():
 
 
 def run_filter_experiments():
-    """Gera as figuras principais dos filtros/processos da Parte I."""
+    # gera as figuras principais dos filtros e processos da Parte I
     output_dir = Path("outputs") / "parte1_filtros"
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -336,30 +335,30 @@ def run_filter_experiments():
 
 
 def _apply_signed_kernel_for_view(img, kernel, padding=DEFAULT_PADDING):
-    """Aplica um kernel assinado e normaliza o modulo para visualizacao."""
+    # aplica um kernel assinado e normaliza o modulo pra visualizacao
     response = convolve2d(img, kernel, padding=padding)
     return to_uint8(np.abs(response), normalize=True)
 
 
 def _laplace_sharpening_kernel(alpha):
-    """Kernel equivalente de imagem_original - alpha * Laplace."""
+    # kernel equivalente de imagem_original - alpha * Laplace
     return identity_kernel(3) - alpha * laplace_kernel()
 
 
 def _unsharp_mask_kernel(size, sigma, amount):
-    """Kernel equivalente de imagem + amount * (imagem - gaussiana)."""
+    # kernel equivalente de imagem + amount * (imagem - gaussiana)
     return (1 + amount) * identity_kernel(size) - amount * gaussian_kernel(size, sigma)
 
 
 def _add_gaussian_noise(img, sigma=22.0, seed=7):
-    """Adiciona ruido gaussiano sintetico de forma reprodutivel."""
+    # adiciona ruido gaussiano sintetico de forma reprodutivel
     rng = np.random.default_rng(seed)
     noise = rng.normal(loc=0.0, scale=sigma, size=img.shape)
     return to_uint8(np.asarray(img, dtype=float) + noise)
 
 
 def _save_daily_pipeline_figure(output_path, images, titles, main_title):
-    """Salva uma figura comparativa para os pipelines do dia a dia."""
+    # salva uma figura comparativa pros pipelines do dia a dia
     save_comparison_figure(
         output_path,
         images,
@@ -375,23 +374,25 @@ def _save_daily_pipeline_figure(output_path, images, titles, main_title):
 def run_daily_life_pipeline_experiments():
     """Gera pipelines cotidianos que combinam filtros da Parte I.
 
-    Estes exemplos nao substituem os filtros obrigatorios. Eles mostram como
-    filtros convolucionais aparecem em tarefas praticas: reducao de ruido,
-    pre-processamento para bordas e combinacoes do tipo suavizar + derivar.
+    Esses exemplos nao substituem os filtros obrigatorios. Eles mostram como
+    filtros convolucionais aparecem em tarefas praticas do dia a dia, como
+    reducao de ruido, pre-processamento pra bordas e combinacoes do tipo
+    suavizar + derivar. Em aula vimos que suavizar antes de derivar eh
+    fundamental pra evitar que o ruido domine a resposta.
     """
     output_dir = Path("outputs") / "parte1_pipelines"
     _reset_output_dir(output_dir)
 
-    # Imagem com texto, bandeiras, tijolos e contornos: boa para perceber ruido,
-    # perda de detalhe e diferenca entre bordas limpas e bordas contaminadas.
+    # imagem com texto, bandeiras, tijolos e contornos, boa pra perceber ruido,
+    # perda de detalhe e diferenca entre bordas limpas e bordas contaminadas
     img = read_gray(Path("imgs") / "pessoa-consulado-segurando-papel.jpg")
 
-    # Simula ruido de sensor: variacoes aleatorias de intensidade, comuns em
-    # camera de celular quando ha pouca luz ou ISO alto.
+    # simula ruido de sensor, aquelas variacoes aleatorias de intensidade que
+    # aparecem em camera de celular com pouca luz ou ISO alto
     noisy = _add_gaussian_noise(img, sigma=22.0, seed=42)
 
-    # 1) Reducao de ruido: filtros de suavizacao reduzem variacoes aleatorias,
-    # mas tambem podem apagar detalhes finos.
+    # 1) reducao de ruido com filtros de suavizacao. eles reduzem variacoes
+    # aleatorias mas tambem podem apagar detalhes finos
     box_denoised = apply_box_blur(noisy, size=5, padding=DEFAULT_PADDING)
     gaussian_denoised = apply_gaussian_blur(
         noisy,
@@ -412,8 +413,9 @@ def run_daily_life_pipeline_experiments():
         "Pipeline do dia a dia - reducao de ruido\nsimula ruido de sensor em cameras/celulares",
     )
 
-    # 2) Deteccao de bordas robusta: derivadas como Sobel amplificam ruido.
-    # Suavizar antes reduz bordas falsas, ideia usada por detectores como Canny.
+    # 2) deteccao de bordas robusta. derivadas como Sobel amplificam ruido,
+    # entao suavizar antes reduz bordas falsas. essa eh a ideia por tras de
+    # detectores como Canny que a gente viu em aula
     sobel_noisy = apply_sobel(noisy, padding=DEFAULT_PADDING)
     smoothed_for_sobel = apply_gaussian_blur(
         noisy,
@@ -435,8 +437,8 @@ def run_daily_life_pipeline_experiments():
         "Pipeline do dia a dia - deteccao de bordas robusta\nderivadas amplificam ruido; suavizacao reduz bordas falsas",
     )
 
-    # 3) Laplaciano de Gaussiano simplificado: o Laplace usa segunda derivada e
-    # e ainda mais sensivel a ruido. Suavizar antes deixa as bordas mais limpas.
+    # 3) Laplaciano de Gaussiano simplificado. o Laplace usa segunda derivada
+    # e eh ainda mais sensivel a ruido. suavizar antes deixa as bordas mais limpas
     laplace_noisy = apply_laplace(noisy, padding=DEFAULT_PADDING)
     smoothed_for_laplace = apply_gaussian_blur(
         noisy,
@@ -483,12 +485,13 @@ def run_daily_life_pipeline_experiments():
 
 
 def run_frequency_experiments():
-    """Gera analises em frequencia dos filtros/processos da Parte I.
+    """Gera analises em frequencia dos filtros e processos da Parte I.
 
-    As imagens filtradas continuam sendo geradas pelos filtros espaciais, que
-    usam `convolve2d` manual. O uso de `np.fft` fica encapsulado em
-    `frequency_analysis.py` apenas para visualizar espectros e respostas dos
-    kernels no relatorio.
+    As imagens filtradas continuam sendo geradas pelos filtros espaciais com
+    convolucao manual. O uso de np.fft fica em frequency_analysis.py apenas pra
+    visualizar espectros e respostas dos kernels no relatorio. Em aula vimos
+    que analisar o filtro no dominio da frequencia ajuda a entender se ele eh
+    passa-baixa, passa-alta ou passa-banda.
     """
     output_dir = Path("outputs") / "parte1_frequencias"
     _reset_output_dir(output_dir)
@@ -581,7 +584,7 @@ def run_frequency_experiments():
             "image": images["edges"],
             "kernel": sobel_i,
             "params": (
-                "Sobel i, padding=reflect; resposta direcional para variacoes no eixo i"
+                "Sobel i, padding=reflect; resposta direcional pra variacoes no eixo i"
             ),
             "apply": lambda image: _apply_signed_kernel_for_view(
                 image,
@@ -596,7 +599,7 @@ def run_frequency_experiments():
             "image": images["edges"],
             "kernel": sobel_j,
             "params": (
-                "Sobel j, padding=reflect; resposta direcional para variacoes no eixo j"
+                "Sobel j, padding=reflect; resposta direcional pra variacoes no eixo j"
             ),
             "apply": lambda image: _apply_signed_kernel_for_view(
                 image,
@@ -614,7 +617,7 @@ def run_frequency_experiments():
                 shape,
             ),
             "params": (
-                "sqrt(Gi^2 + Gj^2), padding=reflect; nao e um unico kernel, combina Sobel i e j"
+                "sqrt(Gi^2 + Gj^2), padding=reflect; nao eh um unico kernel, combina Sobel i e j"
             ),
             "response_title": "resposta combinada |Sobel|",
             "apply": lambda image: apply_sobel(image, padding=DEFAULT_PADDING),

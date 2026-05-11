@@ -1,8 +1,5 @@
-"""Ponto de entrada do trabalho VisionFilters.
-
-Neste momento o main apenas verifica a arquitetura. Nos proximos passos ele
-podera chamar os experimentos que geram as imagens do relatorio.
-"""
+# ponto de entrada do trabalho VisionFilters
+# por enquanto so roda a checagem da arquitetura, depois vai chamar os experimentos
 
 from src.experiments import run_part1_architecture_check
 
@@ -13,4 +10,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -1,10 +1,8 @@
-"""Funcoes auxiliares para leitura, conversao e salvamento de imagens.
-
-Conceito:
-Antes de aplicar filtros convolucionais, padronizamos a entrada. Este arquivo
-centraliza operacoes simples: leitura com imageio, conversao para tons de
-cinza, normalizacao, recorte central e salvamento de resultados.
-"""
+# funcoes auxiliares pra leitura, conversao e salvamento de imagens
+#
+# antes de aplicar os filtros convolucionais precisa padronizar a entrada.
+# centralizei aqui operacoes simples como leitura com imageio, conversao pra
+# tons de cinza, normalizacao min-max, recorte central e salvamento
 
 from pathlib import Path
 
@@ -14,15 +12,16 @@ import numpy as np
 
 
 def load_image(path):
-    """Le uma imagem do disco usando imageio.v3."""
+    # le uma imagem do disco usando imageio.v3
     return iio.imread(path)
 
 
 def rgb_to_gray(img):
-    """Converte RGB/RGBA para tons de cinza pela formula de luminosidade.
+    """Converte RGB/RGBA pra tons de cinza pela formula de luminosidade.
 
-    A formula usa pesos perceptuais: o canal verde influencia mais a percepcao
-    de brilho, seguido do vermelho e depois do azul.
+    Usa pesos perceptuais onde o canal verde influencia mais a percepcao de
+    brilho, seguido do vermelho e depois do azul. Essa formula foi a mesma
+    que a gente viu em aula pra converter pra escala de cinza.
     """
     img = np.asarray(img)
 
@@ -37,12 +36,17 @@ def rgb_to_gray(img):
 
 
 def luminosity(img):
-    """Versao no estilo da professora: devolve tons de cinza em uint8."""
+    # mesma conversao pra cinza, mas ja devolve em uint8
     return to_uint8(rgb_to_gray(img))
 
 
 def norm_minmax(img, C=255, m=0):
-    """Normaliza uma imagem por min-max, seguindo o padrao usado em aula."""
+    """Normaliza uma imagem por min-max.
+
+    Mapeia o menor valor pra 0 e o maior pra C, espalhando os valores no
+    intervalo. Essa normalizacao eh a mesma que a gente usou em aula pra
+    garantir que a imagem ocupe toda a faixa dinamica disponivel.
+    """
     img = np.asarray(img, dtype=float)
     finite_mask = np.isfinite(img)
 
@@ -55,21 +59,21 @@ def norm_minmax(img, C=255, m=0):
     if img_max == img_min:
         return np.zeros_like(img)
 
-    # Valores nao finitos nao devem dominar a escala da imagem.
+    # valores nao finitos nao devem dominar a escala da imagem
     safe_img = np.where(finite_mask, img, img_min)
     normalized = (safe_img - img_min) / (img_max - img_min)
     return normalized * C - m
 
 
 def normalize_0_255(img):
-    """Normaliza qualquer matriz numerica para o intervalo [0, 255]."""
+    # normaliza qualquer matriz numerica pro intervalo [0, 255]
     return norm_minmax(img, C=255, m=0)
 
 
 def to_uint8(img, normalize=False):
-    """Converte para uint8 com seguranca.
+    """Converte pra uint8 com seguranca.
 
-    Quando normalize=True, primeiro espalha os valores para [0, 255]. Quando
+    Quando normalize=True, primeiro espalha os valores pra [0, 255]. Quando
     normalize=False, apenas troca NaN/inf, recorta a faixa e converte.
     """
     if normalize:
@@ -81,20 +85,20 @@ def to_uint8(img, normalize=False):
 
 
 def clip_uint8(img):
-    """Alias didatico: recorta valores para [0, 255] e converte para uint8."""
+    # recorta valores pra [0, 255] e converte pra uint8
     return to_uint8(img, normalize=False)
 
 
 def read_gray(path):
-    """Le uma imagem e devolve sua versao em tons de cinza."""
+    # le uma imagem e devolve em tons de cinza
     return luminosity(load_image(path))
 
 
 def center_crop(img, crop_shape):
     """Recorta o centro da imagem.
 
-    crop_shape pode ser um inteiro, para recorte quadrado, ou uma tupla
-    (altura, largura). Se o recorte pedido for maior que a imagem, usamos o
+    crop_shape pode ser um inteiro pra recorte quadrado ou uma tupla
+    (altura, largura). Se o recorte pedido for maior que a imagem, usa o
     maior recorte central possivel.
     """
     img = np.asarray(img)
@@ -117,14 +121,14 @@ def center_crop(img, crop_shape):
 
 
 def save_image(path, img, normalize=False):
-    """Salva uma imagem individual, criando a pasta de destino."""
+    # salva uma imagem individual, criando a pasta de destino se precisar
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     iio.imwrite(path, to_uint8(img, normalize=normalize))
 
 
 def show_bw(img, title=None):
-    """Mostra uma imagem em tons de cinza com matplotlib."""
+    # mostra uma imagem em tons de cinza com matplotlib
     plt.imshow(img, cmap="gray", vmin=0, vmax=255)
     plt.axis("off")
     if title is not None:
@@ -143,7 +147,7 @@ def save_comparison_figure(
     dpi=220,
     interpolation="nearest",
 ):
-    """Salva uma figura comparativa com varias imagens lado a lado."""
+    # salva uma figura comparativa com varias imagens lado a lado
     if len(images) == 0:
         raise ValueError("Informe pelo menos uma imagem para comparar.")
 
@@ -186,14 +190,20 @@ def save_comparison_figure(
 
     if main_title is not None:
         fig.suptitle(main_title)
+        # tight_layout nao sabe do suptitle, entao reservamos espaco no topo
+        # proporcional ao numero de linhas do titulo pra nao sobrepor as imagens
+        n_lines = len(main_title.split("\n"))
+        top = 1.0 - 0.08 * n_lines
+        fig.tight_layout(pad=0.8, rect=[0, 0, 1, top])
+    else:
+        fig.tight_layout(pad=0.8)
 
-    fig.tight_layout(pad=0.8)
     fig.savefig(path, bbox_inches="tight", dpi=dpi)
     plt.close(fig)
 
 
 def ensure_output_dirs(base_dir="outputs"):
-    """Garante a existencia das pastas planejadas para os experimentos."""
+    # garante que as pastas de saida dos experimentos existam
     folders = [
         "parte1_padding",
         "parte1_filtros",
@@ -207,7 +217,7 @@ def ensure_output_dirs(base_dir="outputs"):
 
 
 def list_images(imgs_dir="imgs"):
-    """Lista imagens disponiveis para os proximos experimentos."""
+    # lista imagens disponiveis pra os experimentos
     imgs_dir = Path(imgs_dir)
     extensions = ["*.jpg", "*.jpeg", "*.png", "*.bmp", "*.tif", "*.tiff"]
 

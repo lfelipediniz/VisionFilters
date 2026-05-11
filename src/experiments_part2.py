@@ -1,9 +1,8 @@
-"""Experimentos da Parte II: DFT e IDFT manuais.
-
-Este arquivo usa somente as funcoes de `fourier_manual.py` para transformar e
-reconstruir imagens. As imagens sao reduzidas para tamanhos pequenos porque a
-DFT manual por matriz tem custo alto quando a imagem cresce.
-"""
+# experimentos da Parte II sobre DFT e IDFT manuais
+#
+# aqui uso somente as funcoes de fourier_manual.py pra transformar e reconstruir
+# imagens. as imagens sao reduzidas pra tamanhos menores porque a DFT manual
+# por matriz tem custo O(N^2) e fica pesada quando a imagem cresce
 
 from pathlib import Path
 import shutil
@@ -21,13 +20,13 @@ from src.fourier_manual import (
 from src.image_utils import center_crop, normalize_0_255, read_gray, save_image
 
 
-DEFAULT_SIZE = 64
-DEFAULT_RADII = [2, 4, 8, 12, 20, 32]
-CHOSEN_RADII = [8, 20]
+DEFAULT_SIZE = 576
+DEFAULT_RADII = [18, 36, 72, 108, 180, 288]
+CHOSEN_RADII = [72, 180]
 
 
 def _reset_output_dir(output_dir):
-    """Limpa a pasta de saida para nao misturar execucoes antigas."""
+    # limpa a pasta de saida pra nao misturar execucoes antigas
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for path in output_dir.iterdir():
@@ -41,7 +40,12 @@ def _reset_output_dir(output_dir):
 
 
 def _resize_bilinear(img, size):
-    """Redimensiona uma imagem 2D para size x size usando bilinear manual."""
+    """Redimensiona uma imagem 2D pra size x size usando interpolacao bilinear.
+
+    Fiz na mao pra nao depender de cv2.resize ou scipy. A interpolacao bilinear
+    pondera os 4 vizinhos mais proximos pela distancia, gerando transicoes mais
+    suaves que o nearest neighbor.
+    """
     img = np.asarray(img, dtype=float)
 
     if img.ndim != 2:
@@ -78,18 +82,24 @@ def _resize_bilinear(img, size):
 
 
 def prepare_image_for_dft(path, size=DEFAULT_SIZE):
-    """Carrega, centraliza, redimensiona e normaliza uma imagem para a DFT."""
+    # carrega, centraliza, redimensiona e normaliza uma imagem pra DFT
     img = read_gray(path).astype(float)
     square_size = min(img.shape[0], img.shape[1])
     cropped = center_crop(img, square_size)
     resized = _resize_bilinear(cropped, size)
 
-    # Mantemos a escala 0-255 em float para facilitar comparacao visual e erro.
+    # mantenho a escala 0-255 em float pra facilitar comparacao visual e erro
     return normalize_0_255(resized).astype(float)
 
 
 def _save_reconstruction_grid(output_path, original, radii, reconstructions):
-    """Salva uma grade com a imagem original e reconstrucoes por raio."""
+    """Salva uma grade com a imagem original e reconstrucoes por raio.
+
+    Cada raio representa quantas frequencias baixas foram mantidas. Quanto
+    maior o raio, mais frequencias passam e mais a reconstrucao se aproxima
+    da imagem original. Em aula vimos que as baixas frequencias carregam a
+    estrutura geral e as altas frequencias carregam os detalhes finos.
+    """
     images = [original] + list(reconstructions)
     titles = ["original"] + [f"raio={radius}" for radius in radii]
 
@@ -113,7 +123,7 @@ def _save_reconstruction_grid(output_path, original, radii, reconstructions):
 
 
 def _run_single_image_experiment(name, image_path, output_dir, size, radii):
-    """Executa DFT, espectro e reconstrucoes para uma imagem."""
+    # executa DFT, espectro e reconstrucoes pra uma imagem
     image_dir = output_dir / name
     image_dir.mkdir(parents=True, exist_ok=True)
 
@@ -121,6 +131,7 @@ def _run_single_image_experiment(name, image_path, output_dir, size, radii):
     F = dft2_manual(img)
     spectrum = magnitude_spectrum(F)
     reconstructions = reconstruction_sequence(F, radii)
+    reconstructions_by_radius = dict(zip(radii, reconstructions))
 
     original_path = image_dir / "00_imagem_usada.png"
     spectrum_path = image_dir / "01_espectro_magnitude.png"
@@ -131,7 +142,11 @@ def _run_single_image_experiment(name, image_path, output_dir, size, radii):
 
     chosen_paths = []
     for index, radius in enumerate(CHOSEN_RADII, start=3):
-        reconstruction = partial_reconstruction(F, radius)
+        reconstruction = reconstructions_by_radius.get(radius)
+
+        if reconstruction is None:
+            reconstruction = partial_reconstruction(F, radius)
+
         partial_path = image_dir / f"{index:02d}_reconstrucao_raio_{radius}.png"
         save_image(partial_path, reconstruction)
         chosen_paths.append(partial_path)
@@ -146,7 +161,13 @@ def _run_single_image_experiment(name, image_path, output_dir, size, radii):
 
 
 def run_part2_experiments(size=DEFAULT_SIZE, radii=None):
-    """Gera os experimentos principais da Parte II para duas imagens."""
+    """Gera os experimentos principais da Parte II pra duas imagens.
+
+    Escolhi uma imagem com bastante alta frequencia (quadra de basquete, com
+    linhas e detalhes) e outra mais suave (museu, com gradientes e areas
+    uniformes) pra comparar como a reconstrucao parcial se comporta em
+    cada caso.
+    """
     if radii is None:
         radii = DEFAULT_RADII
 
@@ -180,7 +201,12 @@ def run_part2_experiments(size=DEFAULT_SIZE, radii=None):
 
 
 def validate_dft_reconstruction(size=32):
-    """Verifica numericamente que IDFT(DFT(img)) reconstroi a imagem."""
+    """Verifica numericamente que IDFT(DFT(img)) reconstroi a imagem.
+
+    Esse teste eh importante pra garantir que a implementacao manual da DFT
+    esta correta. Se o erro medio e maximo forem proximos de zero (ordem de
+    1e-10 ou menos), a transformada esta funcionando direitinho.
+    """
     image_path = Path("imgs") / "pessoas-museu-belas-artes-interno.jpg"
     img = prepare_image_for_dft(image_path, size=size)
     F = dft2_manual(img)

@@ -1,2 +1,1 @@
-"""Pacote com as implementacoes do trabalho VisionFilters."""
-
+# pacote com as implementacoes do trabalho VisionFilters
