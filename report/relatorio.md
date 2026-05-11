@@ -311,3 +311,108 @@ Esses pipelines aparecem em fotografia digital, cameras de celular, visao comput
 | Emboss | Passa-alta direcional criativo | Regioes uniformes | Bordas direcionais | Simula relevo e iluminacao lateral. |
 
 De forma geral, filtros de suavizacao como media e Gaussiano reduzem ruido e detalhes finos, enquanto filtros derivativos como Laplace e Sobel realcam bordas e tambem podem realcar ruido. Os processos de nitidez ficam entre esses dois mundos: eles preservam a imagem original, mas aumentam a presenca das altas frequencias. Para imagens naturais, o padding `reflect` foi a melhor escolha geral porque evita bordas pretas e reduz artefatos artificiais nas extremidades.
+
+## Parte II - DFT e reconstrucoes parciais
+
+### 1. Objetivo da Parte II
+
+O objetivo da Parte II foi observar uma imagem se formando como soma de senos e cossenos de diferentes frequencias. No dominio espacial eu vejo a imagem como pixels. No dominio da Fourier, eu vejo a imagem como uma combinacao de padroes periodicos: alguns variam devagar, outros variam rapidamente.
+
+As baixas frequencias explicam a estrutura geral da imagem, como regioes grandes, iluminacao e formas suaves. As altas frequencias explicam detalhes finos, bordas, textura e pequenas mudancas de intensidade. Por isso, ao reconstruir uma imagem usando primeiro so as baixas frequencias, ela aparece borrada, mas ja pode ficar reconhecivel. Conforme adicionamos frequencias mais altas, os detalhes voltam.
+
+Os resultados desta parte foram gerados em `outputs/parte2_fourier/`.
+
+### 2. Implementacao manual da DFT
+
+A DFT 2D pode ser escrita conceitualmente como:
+
+```text
+F(u, v) = soma_x soma_y f(x, y) * exp(-j * 2*pi * (u*x/M + v*y/N))
+```
+
+A transformada inversa tem a ideia oposta:
+
+```text
+f(x, y) = (1 / (M*N)) * soma_u soma_v F(u, v) * exp(j * 2*pi * (u*x/M + v*y/N))
+```
+
+Na implementacao, eu usei matrizes de DFT. Para uma dimensao, a matriz tem:
+
+```text
+W[k, n] = exp(-j * 2*pi*k*n/N)
+```
+
+Depois usei a separabilidade da DFT 2D:
+
+```text
+F = W_M @ img @ W_N
+```
+
+Isso ainda e uma implementacao manual porque eu montei explicitamente a matriz da DFT e fiz a multiplicacao matricial. Eu nao chamei `np.fft.fft2`, `np.fft.ifft2`, `scipy.fft` ou funcoes prontas equivalentes. O NumPy foi usado para operacoes basicas de matriz, exponencial complexa e multiplicacao.
+
+Tambem implementei manualmente o deslocamento do espectro com `fftshift_manual` e `ifftshift_manual`, para centralizar as baixas frequencias sem usar `np.fft.fftshift`.
+
+As imagens foram reduzidas para `64x64` nos experimentos principais. Isso foi necessario porque a DFT manual por matriz tem custo alto: se a imagem cresce muito, as matrizes ficam grandes e as multiplicacoes ficam mais lentas. A validacao numerica foi feita em uma imagem `32x32`, e o erro ficou muito pequeno:
+
+- erro medio: `3.874158481000e-13`
+- erro maximo: `1.669775429036e-12`
+
+Isso mostra que `IDFT(DFT(img))` recupera a imagem original praticamente igual, com diferencas apenas de precisao numerica.
+
+### 3. Imagem de alta frequencia
+
+A imagem escolhida para representar alta frequencia foi `quadra-basquete-tdgarden.jpg`. Visualmente, ela tem muitos detalhes pequenos: estrutura da quadra, luzes, linhas, placas, areas com contraste e textura. Mesmo reduzida para `64x64`, ainda da para perceber que existem muitas variacoes locais.
+
+![Alta frequencia - imagem usada](../outputs/parte2_fourier/alta_frequencia/00_imagem_usada.png)
+
+![Alta frequencia - espectro](../outputs/parte2_fourier/alta_frequencia/01_espectro_magnitude.png)
+
+No espectro, a energia nao fica somente concentrada no centro. Ela aparece mais espalhada, porque a imagem depende de varias frequencias para representar os detalhes pequenos. Isso combina com a impressao visual: a imagem tem muita informacao de borda e textura.
+
+![Alta frequencia - reconstrucoes progressivas](../outputs/parte2_fourier/alta_frequencia/02_reconstrucoes_progressivas.png)
+
+Eu escolhi comentar os raios `8` e `20`.
+
+![Alta frequencia - raio 8](../outputs/parte2_fourier/alta_frequencia/03_reconstrucao_raio_8.png)
+
+Com raio `8`, a imagem ja mostra a distribuicao geral de claro e escuro, mas ainda fica bem borrada. As formas grandes aparecem, mas detalhes pequenos da quadra e das regioes iluminadas quase desaparecem.
+
+![Alta frequencia - raio 20](../outputs/parte2_fourier/alta_frequencia/04_reconstrucao_raio_20.png)
+
+Com raio `20`, a imagem ganha mais contorno e textura. Mesmo assim, ela ainda nao fica completamente nitida. O que chamou minha atencao e que a cena demora mais para recuperar a aparencia original, justamente porque muitos detalhes importantes dependem de frequencias mais altas.
+
+Essa imagem demora mais para ficar nitida porque nao basta manter apenas a estrutura geral. Para recuperar as pequenas variacoes, bordas e texturas, a reconstrucao precisa incluir uma faixa maior do espectro.
+
+### 4. Imagem de baixa frequencia
+
+A imagem escolhida para representar baixa frequencia foi `pessoas-museu-belas-artes-interno.jpg`. Visualmente, ela tem areas mais suaves: paredes, iluminacao gradual e formas maiores. Existem pessoas e contornos, mas a imagem nao depende tanto de textura fina quanto a imagem da quadra.
+
+![Baixa frequencia - imagem usada](../outputs/parte2_fourier/baixa_frequencia/00_imagem_usada.png)
+
+![Baixa frequencia - espectro](../outputs/parte2_fourier/baixa_frequencia/01_espectro_magnitude.png)
+
+No espectro, a energia fica mais concentrada perto do centro. Isso significa que boa parte da informacao importante esta nas baixas frequencias. Essa observacao bate com a imagem: a estrutura geral e formada por grandes regioes de intensidade e transicoes mais suaves.
+
+![Baixa frequencia - reconstrucoes progressivas](../outputs/parte2_fourier/baixa_frequencia/02_reconstrucoes_progressivas.png)
+
+Tambem escolhi os raios `8` e `20` para comentar.
+
+![Baixa frequencia - raio 8](../outputs/parte2_fourier/baixa_frequencia/03_reconstrucao_raio_8.png)
+
+Com raio `8`, a imagem ja fica reconhecivel. Ainda esta borrada, mas eu ja consigo perceber a composicao da cena: a area clara do fundo, a regiao mais escura embaixo e as silhuetas principais.
+
+![Baixa frequencia - raio 20](../outputs/parte2_fourier/baixa_frequencia/04_reconstrucao_raio_20.png)
+
+Com raio `20`, os contornos melhoram bastante e a cena fica bem mais parecida com a original. Ainda falta nitidez fina, mas a maior parte da organizacao visual ja esta presente.
+
+Essa imagem fica reconhecivel rapidamente porque grande parte dela depende de frequencias baixas. As formas grandes e a iluminacao suave aparecem antes dos detalhes pequenos.
+
+### 5. Comparacao final
+
+Comparando as duas imagens, a diferenca principal foi a velocidade com que a reconstrucao ficou compreensivel. Na imagem de baixa frequencia, poucos coeficientes ao redor do centro ja recuperaram a estrutura principal. Na imagem de alta frequencia, os primeiros raios deram apenas uma versao muito borrada, e foi necessario aumentar mais o raio para recuperar detalhes.
+
+Isso se relaciona diretamente com compressao de imagens. Se uma imagem tem muita energia em baixas frequencias, da para guardar uma parte menor do espectro e ainda manter uma versao reconhecivel. Se a imagem tem muitos detalhes finos, bordas, textos, linhas e texturas, descartar altas frequencias causa perda visual mais perceptivel.
+
+Os detalhes finos, bordas e texturas dependem de frequencias altas. Por isso eles somem primeiro quando a reconstrucao usa apenas um raio pequeno no centro do espectro. Ja regioes suaves, ceu, paredes, fundos lisos e iluminacao gradual dependem mais de frequencias baixas. Elas aparecem cedo na reconstrucao.
+
+O experimento deixou claro para mim que a imagem nao e reconstruida "por pedacos espaciais", mas por componentes de frequencia. Primeiro aparecem as variacoes lentas, que dao a estrutura geral. Depois entram frequencias mais altas, que devolvem contornos e nitidez.
