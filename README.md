@@ -3,63 +3,49 @@
 Image filtering and Fourier transform experiments.
 Assignment for the Image Processing course at USP (2026).
 
-## Requirements
+## How to run
 
-Python 3.10+ and the following packages:
+```bash
+python -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
+```
 
-```
-pip install numpy imageio matplotlib
-```
+All output images are generated automatically inside `outputs/`.
 
 ## Project structure
 
 ```
 VisionFilters/
-├── imgs/               input images
-├── outputs/            generated figures (created automatically)
-│   ├── parte1_filtros/
-│   ├── parte1_padding/
-│   ├── parte1_frequencias/
-│   ├── parte1_pipelines/
-│   └── parte2_fourier/
+├── imgs/                   input images
+├── outputs/                generated figures (created by main.py)
+│   ├── parte1_filtros/         main filter results
+│   ├── parte1_padding/         padding mode comparison
+│   ├── parte1_frequencias/     frequency domain analysis
+│   ├── parte1_pipelines/       real-world pipeline examples
+│   └── parte2_fourier/         DFT/IDFT partial reconstructions
 ├── src/
-│   ├── convolution.py      manual 2D convolution
-│   ├── kernels.py          kernel definitions
-│   ├── filters_spatial.py  spatial filters
-│   ├── image_utils.py      I/O and helpers
-│   ├── frequency_analysis.py  frequency visualization (Part I)
-│   ├── fourier_manual.py   manual DFT/IDFT (Part II)
-│   ├── experiments_part1.py
-│   └── experiments_part2.py
-├── report/relatorio.md     report
+│   ├── convolution.py          manual 2D convolution
+│   ├── kernels.py              kernel definitions
+│   ├── filters_spatial.py      spatial filters
+│   ├── image_utils.py          I/O and helpers
+│   ├── frequency_analysis.py   frequency visualization (Part I)
+│   ├── fourier_manual.py       manual DFT/IDFT (Part II)
+│   ├── experiments_part1.py    Part I experiment runners
+│   └── experiments_part2.py    Part II experiment runners
+├── report/relatorio.md         report
+├── requirements.txt
 └── main.py
 ```
 
-## Running the experiments
+## What main.py runs
 
-**Part I - spatial filters and frequency analysis:**
-
-```python
-from src.experiments_part1 import (
-    run_padding_experiment,
-    run_filter_experiments,
-    run_frequency_experiments,
-    run_daily_life_pipeline_experiments,
-)
-
-run_filter_experiments()
-run_padding_experiment()
-run_frequency_experiments()
-run_daily_life_pipeline_experiments()
-```
-
-**Part II - manual DFT/IDFT and partial reconstruction:**
-
-```python
-from src.experiments_part2 import run_part2_experiments, validate_dft_reconstruction
-
-validate_dft_reconstruction(size=32)   # sanity check
-run_part2_experiments()                # generates outputs/parte2_fourier/
-```
-
-All output images are saved automatically to the `outputs/` folder.
+| Step | What it does | Output folder |
+|------|-------------|---------------|
+| 1/6 | DFT numerical validation (sanity check) | — |
+| 2/6 | Spatial filter gallery | `parte1_filtros/` |
+| 3/6 | Padding mode comparison | `parte1_padding/` |
+| 4/6 | Frequency domain analysis | `parte1_frequencias/` |
+| 5/6 | Real-world pipeline examples | `parte1_pipelines/` |
+| 6/6 | DFT/IDFT with partial reconstruction | `parte2_fourier/` |
