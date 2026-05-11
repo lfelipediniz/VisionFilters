@@ -1,5 +1,4 @@
 # VisionFilters
-Exploring Image Processing through Filtering and Fourier Transforms
 
 This repository contains practical experiments and algorithms focusing on spatial filtering and frequency domain analysis (Fourier Transforms)
 
