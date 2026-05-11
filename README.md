@@ -1,7 +1,7 @@
 # VisionFilters
+Exploring Image Processing through Filtering and Fourier Transforms
 
-Image filtering and Fourier transform experiments.
-Assignment for the Image Processing course at USP (2026).
+This repository contains practical experiments and algorithms focusing on spatial filtering and frequency domain analysis (Fourier Transforms)
 
 ## How to run
 
